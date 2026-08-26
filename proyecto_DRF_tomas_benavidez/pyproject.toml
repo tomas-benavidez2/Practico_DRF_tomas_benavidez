@@ -1,0 +1,20 @@
+[project]
+name = "proyecto-drf-tomas-benavidez"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "tomas benavidez", email = "t.benavidez@itecriocuarto.org.ar" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.1",
+    "djangorestframework>=3.18.0",
+]
+
+[project.scripts]
+proyecto-drf-tomas-benavidez = "proyecto_drf_tomas_benavidez:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
