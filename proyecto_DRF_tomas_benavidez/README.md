@@ -5,6 +5,21 @@ API REST para la gestión de productos y stock de un emprendimiento de pastas, c
 
 ---
 
+## Características Principales y Arquitectura
+
+* **ViewSets y Routers**:
+  - `CategoriaViewSet`: hereda de `viewsets.ReadOnlyModelViewSet` para exponer operaciones de consulta pública (`list`, `retrieve`).
+  - `ProductoViewSet`: hereda de `viewsets.ModelViewSet` implementando un CRUD completo, optimización ORM con `select_related('categoria')`, alternancia dinámica de serializers y acción personalizada `@action` para productos disponibles (`/api/productos/disponibles/`).
+  - Enrutamiento automático con `DefaultRouter` en `src/productos/routers.py`.
+* **Autenticación con SimpleJWT**:
+  - Emisión de tokens de acceso (`access`) y refresco (`refresh`) mediante `/api/token/` y `/api/token/refresh/`.
+  - Soporte de `SessionAuthentication` para interacción fluida desde la Browsable API de DRF (`/api-auth/`).
+* **Seguridad y Permisos Granulares**:
+  - `CategoriaViewSet`: acceso de solo lectura abierto (`AllowAny`).
+  - `ProductoViewSet`: `get_permissions()` dinámico — consultas públicas (`AllowAny`), mutaciones protegidas (`IsAuthenticated`).
+
+---
+
 ## Requisitos Previos
 
 * **Python**: `>= 3.12`
@@ -30,7 +45,7 @@ uv sync
 uv run python src/manage.py migrate
 ```
 
-### 4. (Opcional) Crear un superusuario para el panel de administración
+### 4. Crear un superusuario / usuario para pruebas de autenticación
 ```bash
 uv run python src/manage.py createsuperuser
 ```
@@ -46,76 +61,83 @@ uv run python src/manage.py runserver
 ```
 
 El servidor quedará escuchando en:
-* **API REST / Browsable API**: `http://127.0.0.1:8000/api/productos/`
+* **API Root (Browsable API)**: `http://127.0.0.1:8000/api/`
+* **Login de Sesión Browsable API**: `http://127.0.0.1:8000/api-auth/login/`
 * **Admin de Django**: `http://127.0.0.1:8000/admin/`
 
 ---
 
 ## Endpoints Disponibles
 
-### Categorías
-| Método HTTP | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/categorias/` | Lista todas las categorías |
-| `POST` | `/api/categorias/` | Crea una nueva categoría |
-| `GET` | `/api/categorias/<id>/` | Detalle de una categoría por ID |
-| `PUT` | `/api/categorias/<id>/` | Actualiza completamente una categoría |
-| `PATCH` | `/api/categorias/<id>/` | Actualiza parcialmente una categoría |
-| `DELETE` | `/api/categorias/<id>/` | Elimina una categoría (protegida si tiene productos) |
+### Autenticación (SimpleJWT)
+| Método HTTP | Endpoint | Permisos | Descripción |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/token/` | Público | Obtiene par de tokens (`access` y `refresh`) enviando `username` y `password` |
+| `POST` | `/api/token/refresh/` | Público | Renueva el token de acceso enviando `{"refresh": "<token>"}` |
 
-### Productos
-| Método HTTP | Endpoint | Descripción |
-| :--- | :--- | :--- |
-| `GET` | `/api/productos/` | Lista productos con **categoría anidada** (`select_related`) |
-| `POST` | `/api/productos/` | Crea un nuevo producto (pasando `categoria`: ID) |
-| `GET` | `/api/productos/<id>/` | Detalle de un producto con **categoría anidada** |
-| `PUT` | `/api/productos/<id>/` | Actualiza completamente un producto por ID |
-| `PATCH` | `/api/productos/<id>/` | Actualiza parcialmente un producto por ID |
-| `DELETE` | `/api/productos/<id>/` | Elimina un producto por ID |
+### Categorías (`ReadOnlyModelViewSet`)
+| Método HTTP | Endpoint | Permisos | Descripción |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/categorias/` | Público (`AllowAny`) | Lista todas las categorías |
+| `GET` | `/api/categorias/<id>/` | Público (`AllowAny`) | Detalle de una categoría por ID |
+
+### Productos (`ModelViewSet`)
+| Método HTTP | Endpoint | Permisos | Descripción |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/productos/` | Público (`AllowAny`) | Lista productos con **categoría anidada** (`select_related`) |
+| `POST` | `/api/productos/` | Autenticado (`IsAuthenticated`) | Crea un nuevo producto (pasando `categoria`: ID) |
+| `GET` | `/api/productos/<id>/` | Público (`AllowAny`) | Detalle de un producto con **categoría anidada** |
+| `PUT` | `/api/productos/<id>/` | Autenticado (`IsAuthenticated`) | Actualiza completamente un producto por ID |
+| `PATCH` | `/api/productos/<id>/` | Autenticado (`IsAuthenticated`) | Actualiza parcialmente un producto por ID |
+| `DELETE` | `/api/productos/<id>/` | Autenticado (`IsAuthenticated`) | Elimina un producto por ID |
+| `GET` | `/api/productos/disponibles/`| Público (`AllowAny`) | Acción custom: lista solo productos con `disponible = true` |
 
 ---
 
-## Guía de Pruebas Manuales (Postman / Bruno / ThunderClient / Browsable API)
+## Guía de Pruebas Manuales (Postman / Bruno / ThunderClient / cURL)
 
-Podés probar la API directamente desde la **Browsable API de DRF** en tu navegador o utilizando un cliente REST con el siguiente flujo de prueba:
-
-### 1. Crear una Categoría (POST)
-* **URL**: `http://127.0.0.1:8000/api/categorias/`
+### 1. Obtener Token JWT (POST)
+* **URL**: `http://127.0.0.1:8000/api/token/`
 * **Método**: `POST`
-* **Headers**: `Content-Type: application/json`
 * **Body (JSON)**:
   ```json
   {
-    "nombre": "Pastas Rellenas",
-    "descripcion": "Pastas artesanales con relleno gourmet",
-    "activa": true
+    "username": "tu_usuario",
+    "password": "tu_password"
   }
   ```
-* **Respuesta esperada**: Status `201 Created`
+* **Respuesta esperada**: Status `200 OK`
   ```json
   {
-    "id": 1,
-    "nombre": "Pastas Rellenas",
-    "descripcion": "Pastas artesanales con relleno gourmet",
-    "activa": true,
-    "creado_en": "2026-09-09T21:30:00Z"
+    "access": "eyJhbGciOi...",
+    "refresh": "eyJhbGciOi..."
   }
   ```
 
 ---
 
-### 2. Listar Categorías (GET)
+### 2. Listar Categorías (GET - Público)
 * **URL**: `http://127.0.0.1:8000/api/categorias/`
 * **Método**: `GET`
 * **Respuesta esperada**: Status `200 OK` con la lista de categorías.
 
 ---
 
-### 3. Crear un Producto asociado a la Categoría (POST)
+### 3. Crear Producto sin Token (POST - Rechazado)
 * **URL**: `http://127.0.0.1:8000/api/productos/`
 * **Método**: `POST`
-* **Headers**: `Content-Type: application/json`
-* **Body (JSON)**: Enviamos únicamente la clave foránea (`categoria: 1`):
+* **Body**: Datos de producto.
+* **Respuesta esperada**: Status `401 Unauthorized`.
+
+---
+
+### 4. Crear Producto con Token (POST - Autorizado)
+* **URL**: `http://127.0.0.1:8000/api/productos/`
+* **Método**: `POST`
+* **Headers**:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <tu_access_token>`
+* **Body (JSON)**:
   ```json
   {
     "nombre": "Sorrentinos de Jamón y Queso",
@@ -126,48 +148,21 @@ Podés probar la API directamente desde la **Browsable API de DRF** en tu navega
     "disponible": true
   }
   ```
-* **Respuesta esperada**: Status `201 Created`
+* **Respuesta esperada**: Status `201 Created`.
 
 ---
 
-### 4. Listar Productos con Serializer Anidado (GET)
-* **URL**: `http://127.0.0.1:8000/api/productos/`
+### 5. Consultar Productos Disponibles (GET - Acción personalizada)
+* **URL**: `http://127.0.0.1:8000/api/productos/disponibles/`
 * **Método**: `GET`
-* **Respuesta esperada**: Status `200 OK` observando el objeto `categoria` completo anidado:
-  ```json
-  [
-    {
-      "id": 1,
-      "nombre": "Sorrentinos de Jamón y Queso",
-      "descripcion": "Caja de 12 unidades artesanales",
-      "categoria": {
-        "id": 1,
-        "nombre": "Pastas Rellenas",
-        "descripcion": "Pastas artesanales con relleno gourmet",
-        "activa": true,
-        "creado_en": "2026-09-09T21:30:00Z"
-      },
-      "precio": "8500.00",
-      "stock": 25,
-      "disponible": true,
-      "creado_en": "2026-09-09T21:31:00Z",
-      "actualizado_en": "2026-09-09T21:31:00Z"
-    }
-  ]
-  ```
-
----
-
-### 5. Ver detalle de un Producto con Serializer Anidado (GET)
-* **URL**: `http://127.0.0.1:8000/api/productos/1/`
-* **Método**: `GET`
-* **Respuesta esperada**: Status `200 OK` con la categoría anidada.
+* **Respuesta esperada**: Status `200 OK` con únicamente productos en stock y disponibles.
 
 ---
 
 ### 6. Probar validación de precio inválido (POST con precio <= 0)
 * **URL**: `http://127.0.0.1:8000/api/productos/`
 * **Método**: `POST`
+* **Headers**: `Authorization: Bearer <tu_access_token>`
 * **Body (JSON)**:
   ```json
   {
@@ -178,22 +173,3 @@ Podés probar la API directamente desde la **Browsable API de DRF** en tu navega
   }
   ```
 * **Respuesta esperada**: Status `400 Bad Request` con mensaje `"El precio debe ser mayor a 0."`.
-
----
-
-### 7. Probar protección de integridad referencial (DELETE Categoría en uso)
-* **URL**: `http://127.0.0.1:8000/api/categorias/1/`
-* **Método**: `DELETE`
-* **Respuesta esperada**: Status `400 Bad Request`:
-  ```json
-  {
-    "error": "No se puede eliminar la categoría porque tiene productos asociados."
-  }
-  ```
-
----
-
-### 8. Eliminar un Producto (DELETE)
-* **URL**: `http://127.0.0.1:8000/api/productos/1/`
-* **Método**: `DELETE`
-* **Respuesta esperada**: Status `204 No Content`. Una vez eliminado el producto, la categoría `1` sí podrá eliminarse.
